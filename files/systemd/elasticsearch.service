@@ -1,0 +1,36 @@
+#
+# Systemd script to manage a Elasticsearch node.
+#
+# Copyright 2016-2017, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+
+[Unit]
+Description=Elasticsearch
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User=elasticsearch
+Group=elasticsearch
+PIDFile=/var/run/elasticsearch/elasticsearch.pid
+WorkingDirectory=/srv/elasticsearch
+PermissionsStartOnly=true
+ExecStartPre=-/usr/bin/install -o elasticsearch -g elasticsearch -d /var/run/elasticsearch
+ExecStart=/srv/elasticsearch/bin/elasticsearch -d -p /var/run/elasticsearch/elasticsearch.pid
+SyslogIdentifier=elasticsearch
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=infinity
+LimitMEMLOCK=infinity
+LimitNPROC=infinity
+LimitAS=infinity
+SuccessExitStatus=143
+Restart=always
+RestartSec=20
+
+[Install]
+WantedBy=multi-user.target

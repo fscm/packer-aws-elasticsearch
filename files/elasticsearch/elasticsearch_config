@@ -1,0 +1,182 @@
+#!/bin/bash
+#
+# Shell script to configure some options of Elasticsearch.
+#
+# Copyright 2016-2017, Frederico Martins
+#   Author: Frederico Martins <http://github.com/fscm>
+#
+# SPDX-License-Identifier: MIT
+#
+# This progam is free software. You can use it and/or modify it under the
+# terms of the MIT License.
+#
+
+set -e
+
+BASEDIR=$(dirname $0)
+BASENAME=$(basename $0)
+__TS__=$(date +%Y%m%d%H%M%S)
+
+# Configuration files
+ELASTICSEARCH_CONF="/srv/elasticsearch/config/elasticsearch.yml"
+ELASTICSEARCH_INCLUDE="/srv/elasticsearch/bin/elasticsearch.in.sh"
+
+# Variables
+ELASTICSEARCH_DISABLE=0
+ELASTICSEARCH_ENABLE=0
+ELASTICSEARCH_START=0
+ELASTICSEARCH_WAIT=0
+
+ELASTICSEARCH_ADDRESS=
+ELASTICSEARCH_CLUSTER_NAME=
+ELASTICSEARCH_HEAP_SIZE=
+ELASTICSEARCH_NODE_NAME=
+
+__TMP_NODES__=()
+
+# Usage
+function show_usage() {
+  echo "Usage: ${BASENAME} [options]"
+  echo "  options:"
+  echo "    -a <ADDRESS>   Sets the Elasticsearch node publish address (default value"
+  echo "                   is 'localhost')."
+  echo "    -c <NAME>      Sets the Elasticsearch cluster name (default value is"
+  echo "                   'es-cluster')."
+  echo "    -D             Disables the Elasticsearch service from start at boot time."
+  echo "    -E             Enables the Elasticsearch service to start at boot time."
+  echo "    -m <MEMORY>    Sets Elasticsearch heap size. Values should be provided"
+  echo "                   following the same Java heap nomenclature."
+  echo "    -n <NAME>      Sets the Elasticsearch node name (default value is the"
+  echo "                   \`hostname\` value)."
+  echo "    -p <ENDPOINT>  Sets a Elasticsearch peer endpoint for discovery purposes"
+  echo "                   (default value is 'localhost')."
+  echo "    -S             Starts the Elasticsearch service after performing the"
+  echo "                   required configurations (if any given)."
+  echo "    -W <SECONDS>   Waits the specified amount of seconds before starting the"
+  echo "                   Elasticsearch service (default value is '0')."
+}
+
+# Options parsing
+while getopts ":a:c:DEm:n:p:SW:" opt; do
+  case $opt in
+    a)
+      ELASTICSEARCH_ADDRESS=${OPTARG}
+      ;;
+    c)
+     ELASTICSEARCH_CLUSTER_NAME=${OPTARG}
+     ;;
+    D)
+      ELASTICSEARCH_DISABLE=1
+      ;;
+    E)
+      ELASTICSEARCH_ENABLE=1
+      ;;
+    m)
+      ELASTICSEARCH_HEAP_SIZE=${OPTARG}
+      ;;
+    n)
+      ELASTICSEARCH_NODE_NAME=${OPTARG}
+      ;;
+    p)
+      __TMP_NODES__+=("${OPTARG}")
+      ;;
+    S)
+      ELASTICSEARCH_START=1
+      ;;
+    W)
+      ELASTICSEARCH_WAIT=${OPTARG}
+      ;;
+    \?)
+      echo >&2 "  [ERROR] Invalid option: -${OPTARG}"
+      exit 1
+      ;;
+    :)
+      echo >&2 "  [ERROR] Option -${OPTARG} requires an argument"
+      exit 2
+      ;;
+  esac
+done
+
+# Check arguments
+if [[ $# -eq 0 ]]; then
+  show_usage
+  exit 3
+fi
+
+# Check permissions
+if [[ $EUID -ne 0 ]]; then
+  echo >&2 "  [ERROR] This script requires privileged access to system files"
+  exit 4
+fi
+
+# Check requirements
+if [[ "${ELASTICSEARCH_ENABLE}" -gt 0 ]] && [[ "${ELASTICSEARCH_DISABLE}" -gt 0 ]]; then
+  echo >&2 "  [ERROR] Enable (-E) and Disable (-D) options can not be used together."
+  exit 5
+fi
+
+# Backup configuration files
+if [[ -f ${ELASTICSEARCH_CONF} ]]; then
+  cp ${ELASTICSEARCH_CONF} ${ELASTICSEARCH_CONF}.${__TS__}.bck
+fi
+if [[ -f ${ELASTICSEARCH_INCLUDE} ]]; then
+  cp ${ELASTICSEARCH_INCLUDE} ${ELASTICSEARCH_INCLUDE}.${__TS__}.bck
+fi
+
+# Configure node publish address
+if ! [[ "x${ELASTICSEARCH_ADDRESS}" = "x" ]]; then
+  sed -i -r -e "/^network.publish_host:/s/:.*/: ${ELASTICSEARCH_ADDRESS}/" ${ELASTICSEARCH_CONF}
+fi
+
+# Configure cluster name
+if ! [[ "x${ELASTICSEARCH_CLUSTER_NAME}" = "x" ]]; then
+  sed -i -r -e "s/# *cluster.name:/cluster.name:/;/^cluster.name:/s/:.*/: ${ELASTICSEARCH_CLUSTER_NAME}/" ${ELASTICSEARCH_CONF}
+fi
+
+# Configure memory settings
+if ! [[ "x${ELASTICSEARCH_HEAP_SIZE}" = "x" ]]; then
+  sed -i -r -e '/-Xms/d' -e '/-Xmx/d' ${ELASTICSEARCH_INCLUDE}
+  echo -e "ES_JAVA_OPTS=\"-Xms${ELASTICSEARCH_HEAP_SIZE} \$ES_JAVA_OPTS\"\nES_JAVA_OPTS=\"-Xmx${ELASTICSEARCH_HEAP_SIZE} \$ES_JAVA_OPTS\"" >> ${ELASTICSEARCH_INCLUDE}
+fi
+
+# Configure node name
+if ! [[ "x${ELASTICSEARCH_NODE_NAME}" = "x" ]]; then
+  sed -i -r -e "s/# *node.name:/node.name:/;/^node.name:/s/:.*/: ${ELASTICSEARCH_NODE_NAME}/" ${ELASTICSEARCH_CONF}
+fi
+
+# Configure elasticsearch peer nodes
+if [[ "${#__TMP_NODES__[@]}" -gt 0 ]]; then
+  ELASTICSEARCH_NODES=()
+  for node in ${__TMP_NODES__[@]//,/ }; do
+    if [[ "${node}" =~ ^([0-9a-zA-Z\.\-]+)(:([0-9]+))?$ ]]; then
+      ELASTICSEARCH_PORT=("${BASH_REMATCH[3]}")
+      ELASTICSEARCH_NODES+=("${BASH_REMATCH[1]}:${ELASTICSEARCH_PORT:-9300}")
+    else
+      echo "  [WARN] Invalid peer address (${node})."
+    fi
+  done
+  if [[ "${#ELASTICSEARCH_NODES[@]}" -gt 0 ]]; then
+    NODES="${ELASTICSEARCH_NODES[@]}"
+    sed -i -r -e "s/# *discovery.zen.ping.unicast.hosts:/discovery.zen.ping.unicast.hosts:/;/^discovery.zen.ping.unicast.hosts:/s/:.*/: \[\"${NODES// /\",\"}\"\]/" ${ELASTICSEARCH_CONF}
+  fi
+fi
+
+# Enable the service
+[[ "${ELASTICSEARCH_ENABLE}" -gt 0 ]] && systemctl enable elasticsearch.service
+
+# Disable the service
+[[ "${ELASTICSEARCH_DISABLE}" -gt 0 ]] && systemctl disable elasticsearch.service
+
+# Start the service
+if [[ "${ELASTICSEARCH_START}" -gt 0 ]]; then
+  echo "  [INFO] Elasticsearch will start in ${ELASTICSEARCH_WAIT} second(s)..."
+  nohup sh -c "sleep ${ELASTICSEARCH_WAIT} ; systemctl start elasticsearch.service" &> /dev/null &
+fi
+
+# Clean up unneeded backups
+diff -q ${ELASTICSEARCH_CONF} ${ELASTICSEARCH_CONF}.${__TS__}.bck &> /dev/null && rm -f ${ELASTICSEARCH_CONF}.${__TS__}.bck || true
+diff -q ${ELASTICSEARCH_INCLUDE} ${ELASTICSEARCH_INCLUDE}.${__TS__}.bck &> /dev/null && rm -f ${ELASTICSEARCH_INCLUDE}.${__TS__}.bck || true
+
+# All done
+echo "  [INFO] Configuration(s) successfully updated"
+exit 0
