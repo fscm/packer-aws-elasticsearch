@@ -64,6 +64,7 @@
         "echo 'dash dash/sh boolean false' | sudo debconf-set-selections",
         "sudo dpkg-reconfigure -f noninteractive dash",
         "sudo update-locale LC_CTYPE={{user `system_locale`}}.UTF-8",
+        "echo 'export TZ=:/etc/localtime' | sudo tee /etc/profile.d/tz.sh > /dev/null",
         "sudo update-alternatives --set editor /usr/bin/vim.basic",
         "echo === Sysctl ===",
         "sudo cp /tmp/50-elasticsearch.conf /etc/sysctl.d/",
