@@ -16,6 +16,7 @@
     "java_update_version":    "112",
     "elasticsearch_uid":      "2010",
     "elasticsearch_version":  "{{env `elasticsearch_version`}}",
+    "os_short_arch":          "x64",
     "system_locale":          "en_US"
   },
   "builders": [{
