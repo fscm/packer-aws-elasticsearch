@@ -97,7 +97,7 @@
         "sudo mkdir -p /var/{log,run}/elasticsearch",
         "sudo ln -s /var/log/elasticsearch /srv/elasticsearch/logs",
         "sudo ln -s /data/elasticsearch /srv/elasticsearch/data",
-        "echo -e \"\\n__DEFAULT_MEM__=\\$(/usr/bin/awk '/MemTotal/{m=\\$2*.60;print m\\\"k\\\"}' /proc/meminfo)\\nES_JAVA_OPTS=\\\"-Xms\\${__DEFAULT_MEM__} \\$ES_JAVA_OPTS\\\"\\nES_JAVA_OPTS=\\\"-Xmx\\${__DEFAULT_MEM__} \\$ES_JAVA_OPTS\\\"\" | sudo tee -a /srv/elasticsearch/bin/elasticsearch.in.sh > /dev/null",
+        "echo -e \"\\n__DEFAULT_MEM__=\\$(/usr/bin/awk '/MemTotal/{m=\\$2*.60;print int(m)\\\"k\\\"}' /proc/meminfo)\\nES_JAVA_OPTS=\\\"-Xms\\${__DEFAULT_MEM__} \\$ES_JAVA_OPTS\\\"\\nES_JAVA_OPTS=\\\"-Xmx\\${__DEFAULT_MEM__} \\$ES_JAVA_OPTS\\\"\" | sudo tee -a /srv/elasticsearch/bin/elasticsearch.in.sh > /dev/null",
         "sudo sed -i -r -e '/^-Xms/i## IMPORTANT: Use the bin\\/elasticsearch.in.sh file instead to change the JVM heap size.' /srv/elasticsearch/config/jvm.options",
         "sudo sed -i -r -e '/^-Xms/s/^/#/' /srv/elasticsearch/config/jvm.options",
         "sudo sed -i -r -e '/^-Xmx/s/^/#/' /srv/elasticsearch/config/jvm.options",
